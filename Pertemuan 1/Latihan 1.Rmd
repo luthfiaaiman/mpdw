@@ -1,1 +1,2 @@
-
+# Latihan MPDW
+Ini adalah Pertemuan 1 MPDW Statistika dan Sains Data Angkatan 60
