@@ -110,7 +110,7 @@ $$
 \rho_1=\frac{\gamma_{1}}{\gamma_{0}}=\frac{-\theta_{1}+\theta_{1}\theta_{2}}{1+(\theta_{1})^2+(\theta_{2})^2}=\frac{-(0.4)+(0.4)(0.6)}{1+(0.4)^2+(0.6)^2}=0.42
 $$
 
-#### antara $Y_t$ dengan $Y_{t-2}$
+#### Korelasi antara $Y_t$ dengan $Y_{t-2}$
 
 ```{r}
 plot(ma2[-c(1,2)], ma2[-c(n-1,n)], main="Yt vs Yt-2")
@@ -128,7 +128,7 @@ $$
 \rho_2=\frac{\gamma_{2}}{\gamma_{0}}=\frac{\theta_{2}}{1+(\theta_{1})^2+(\theta_{2})^2}=\frac{(0.6)}{1+(0.4)^2+(0.6)^2}=0.39
 $$
 
-#### antara $Y_t$ dengan $Y_{t-3}$
+#### Korelasi antara $Y_t$ dengan $Y_{t-3}$
 
 ```{r}
 plot(ma2[-c(1,2,3)], ma2[-c(n-2,n-1,n)], main="Yt vs Yt-3")
@@ -140,17 +140,17 @@ Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan yang negatif 
 cor(ma2[-c(1,2,3)],ma2[-c(n-2,n-1,n)])
 ```
 
-Korelasi antara $Y_t$ dengan $Y_{t-3}$ hasil simulasi mendekati teori yang ada dimana $\rho_{k}=0$ untuk $k=3,4,\dots$.
+Korelasi antara $Y_t$ dengan $Y_{t-3}$ hasil simulasi mendekati teori yang ada dimana $\rho_{k}=0$ untuk $k=3,4,\dots$
 
 # **AR(2)**
 
-## Proses AR
+## Proses AR(2)
 
 Proses AR dapat dituliskan sebagai berikut:
 
 $$ y_{t} = c + e_t + \phi_{1}Y_{t-1} + \phi_{2}Y_{t-2} + \dots + \phi_{q}Y_{t-q} = c+{e_t+\sum_{i=1}^p \phi_iY_{t-i}} $$ Terlihat bahwa $Y_t$ berperan penting dalam pembangkitan proses AR.
 
-## Pembangkitan Proses AR
+## Pembangkitan Proses AR(2)
 
 Akan dicoba membangkitkan proses AR, yaitu AR(2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ sebanyak 300 observasi dan $c=0$.
 
@@ -212,7 +212,7 @@ $$
 \phi_{1}+\phi_{2}<1, \:\phi_{2}-\phi_{1}<1, \:dan \:|\phi_{2}|<1
 $$
 
-AR(2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ memenuhi seluruh syarat tersebut, sehingga data ini dapat dikatakan stasioner.
+AR(2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ **memenuhi seluruh syarat** tersebut, sehingga data ini dapat dikatakan **stasioner**.
 
 ### Plot EACF
 
@@ -281,7 +281,7 @@ $$
 
 # **ARMA(2,2)**
 
-## Fungsi pembangkitan ARMA
+## Fungsi pembangkitan ARMA(2,2)
 
 Bentuk umum data berpola ARMA:
 
@@ -344,7 +344,7 @@ acf(arma22)
 acf(arma22.sim)
 ```
 
-Berdasarkan plot ACF tersebut, terlihat bahwa model ARMA(1,1) hasil simulasi memiliki plot ACF yang *tails off*, sesuai dengan teori yang ada
+Berdasarkan plot ACF tersebut, terlihat bahwa model ARMA(2,2) hasil simulasi memiliki plot ACF yang *tails off*, sesuai dengan teori yang ada
 
 ### Plot PACF
 
@@ -362,7 +362,7 @@ $$
 \phi_{1}+\phi_{2}<1, \:\phi_{2}-\phi_{1}<1, \:dan \:|\phi_{2}|<1
 $$
 
-ARMA(2,2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ memenuhi seluruh syarat tersebut, sehingga data ini dapat dikatakan **stasioner**.
+ARMA(2,2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ **memenuhi seluruh syarat** tersebut, sehingga data ini dapat dikatakan **stasioner**.
 
 
 ### Plot EACF
