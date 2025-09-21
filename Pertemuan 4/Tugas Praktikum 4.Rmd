@@ -22,7 +22,7 @@ $$ Terlihat bahwa $e_t$, atau *white noise*, berperan penting dalam pembangkitan
 
 ## Pembangkitan Proses MA(2)
 
-Akan dicoba membangkitkan proses MA paling sederhana, yaitu MA(2) dengan $\theta_1 = 0.4$ dan $\theta_2 = 0.6$ sebanyak 300 observasi dan $c=0$.
+Akan dicoba membangkitkan proses MA, yaitu MA(2) dengan $\theta_1 = 0.4$ dan $\theta_2 = 0.6$ sebanyak 300 observasi dan $c=0$.
 
 ```{r}
 set.seed(123)
