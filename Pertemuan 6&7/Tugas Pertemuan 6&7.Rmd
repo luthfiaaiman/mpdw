@@ -1,1 +1,365 @@
+---
+title: "Tugas Praktikum 6&7"
+author: "Luthfia Aiman Hanin (G1401231064)"
+output:
+  html_document:
+    themme: null
+    toc: true
+    toc_depth: 4
+    toc_float: true
+    css: "C:/Users/lizam/Downloads/Prak MPDW/mpdw/style.css"
+---
 
+```{r setup, message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(forecast)
+library(tseries)
+library(zoo)
+library(xts)
+library(ggplot2)
+library(FinTS)
+library(tsibble)
+library(MASS)
+library(TSA)
+library(TTR)
+library(aTSA)
+library(graphics)
+```
+
+# **Persiapan Data**
+
+```{r}
+raw_url <- "https://raw.githubusercontent.com/shafifaris/MPDW/main/Pertemuan%201/Copy%20of%20Gold%20Price(1).xlsx"
+tempf <- tempfile(fileext = ".xlsx")
+download.file(raw_url, destfile = tempf, mode = "wb")
+raw <- readxl::read_excel(tempf, sheet = 1)
+df <- raw[301:400, ]
+```
+
+```{r}
+df$Date <- as.Date(df$Date, tryFormats = c("%Y-%m-%d","%d/%m/%Y","%m/%d/%Y","%Y/%m/%d"))
+na_dates <- which(is.na(df$Date))
+if(length(na_dates)>0){
+  parsed <- lubridate::parse_date_time(df$Date[na_dates], orders = c("ymd","dmy","mdy"))
+  df$Date[na_dates] <- as.Date(parsed)
+}
+if(any(is.na(df$Date))) stop("Gagal parse Date pada beberapa baris. Periksa format kolom Date.")
+
+df$Price <- gsub("[^0-9\\.-]", "", as.character(df$Price))
+df$Price <- as.numeric(df$Price)
+if(any(is.na(df$Price))) stop("Gagal konversi Price menjadi numeric. Periksa isi Price (mis. teks).")
+
+df <- df %>% arrange(Date)
+```
+
+```{r}
+dates <- df$Date
+prices <- df$Price
+ts_prices <- ts(prices, frequency = 1)
+
+# deteksi gap median (hari)
+median_gap <- median(as.numeric(diff(dates)))
+freq <- ifelse(median_gap <= 1.5, 365,                # harian 
+       ifelse(median_gap >= 27 & median_gap <= 32, 12, # bulanan
+       ifelse(median_gap >= 6 & median_gap <= 8, 52, 1))) # mingguan 
+```
+
+## **Membagi Data Train & Test (85:15)**
+
+```{r}
+n <- length(ts_prices)   # 100
+n_train <- floor(0.85 * n)  # 85
+train_ts <- ts_prices[1:n_train]
+test_ts  <- ts_prices[(n_train+1):n]
+```
+
+Karena data **menurun dengan sangat drastis pada amatan ke-80 hingga 85**, data dipartisi dengan proporsi 85:15. Hal ini dilakukan untuk membiarkan model belajar pola stabil + shock agar *forecasting* lebih baik.
+
+# **Eksplorasi**
+
+## **Plot Data Penuh**
+
+```{r}
+plot_gold <- ts_prices |> 
+  as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() +
+  theme_bw() +
+  xlab("Time") + 
+  ylab("Gold Price") +
+  
+  # Tambahkan garis batas
+  geom_vline(xintercept = 85, linetype = "dashed", color = "red") +
+  ggtitle("Partisi Deret Waktu:")
+
+plot_gold
+```
+
+## **Plot Data Latih**
+
+```{r}
+plot.ts(train_ts, lty=1, xlab="Waktu", ylab="Harga Emas", main="Plot Harga Emas")
+```
+
+## **Plot Data Uji**
+
+```{r}
+plot.ts(test_ts, lty=1, xlab="Waktu", ylab="Harga Emas", main="Plot Harga Emas")
+```
+
+# **Periksa Kestasioneran**
+
+## **Plot ACF**
+
+```{r}
+acf(train_ts, main="ACF", lag.max=20)
+```
+
+Dari plot ACF, terlihat bahwa nilai autokorelasi **menurun secara perlahan** (*decaying slowly*) dan tidak langsung turun ke sekitar nol. Hal ini menjadi indikasi bahwa data **belum stasioner dalam rataan**.
+
+## **Uji ADF**
+
+```{r}
+tseries::adf.test(train_ts) 
+```
+
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar **0.1418** yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa **data tidak stasioner dalam rataan**. 
+
+## **Plot Box-Cox**
+
+```{r}
+bc = MASS::boxcox(train_ts ~ 1, lambda = seq(-2,23,by=1))
+#Nilai Rounded Lambda
+lambda <- bc$x[which.max(bc$y)]
+lambda
+#SK
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+```
+
+Pada Plot Box-Cox terlihat bahwa nilai 1 masih masuk ke dalam interval yang artinya **data sudah stasioner dalam ragam**.
+
+## **Penanganan Ketidakstasioneran Rataan**
+
+```{r}
+# Karena tidak stasioner: lakukan differencing 1x
+ts_diff1 <- diff(train_ts, differences = 1)
+adf.test(ts_diff1)
+```
+
+Hasil Uji ADF menunjukkan bahwa *p-value* bernilai sebesar **0.01**, yang lebih kecil dari taraf 5% sehingga dapat disimpulkan bahwa **data sudah stasioner dalam rataan**.
+
+## **Perbandingan Setelah Differencing**
+
+```{r}
+# Plot sebelum dan sesudah differencing
+plot(train_ts, type = "l", main="Sebelum differencing", ylab="Price", col="blue")
+plot(ts_diff1, type = "l", main="Sesudah differencing (d=1)", ylab="Difference", col="red")
+par(mfrow=c(1,1))
+```
+
+Dari plot perbanding, terlihat bahwa data sudah cukup **stasioner dalam rataan**.
+
+```{r}
+arch.test <- ArchTest(ts_diff1, lags = 12)
+arch.test
+```
+
+# **Spesifikasi Model**
+
+## **Plot ACF & PACF**
+
+```{r}
+par(mfrow = c(1,2))
+acf(ts_diff1, main="ACF", lag.max=20) #ARIMA(0,0,2)
+pacf(ts_diff1, main="PACF", lag.max=20) #ARIMA(1,0,0)
+par(mfrow = c(1,1))
+```
+
+Pada plot PACF terlihat *cut-off* pada lag-1 yang menjadi indikasi **AR(1)**.
+
+## **Periksa EACF**
+
+```{r}
+eacf(ts_diff1)
+```
+
+Tabel EACF menunjukkan banyak kombinasi model yang layak, sehingga diambil 6 model yakni:
+**ARIMA(1,1,0), ARIMA(0,1,1), ARIMA(1,1,1), ARIMA(2,1,0), ARIMA(0,1,3), ARIMA(2,1,1)**.
+
+## **Pendugaan Parameter**
+
+### **ARIMA (1,1,0)**
+```{r}
+ts_diff1 <- ts(ts_diff1)
+model1=Arima(ts_diff1, order=c(1,1,0),method="ML")
+summary(model1)
+lmtest::coeftest(model1) 
+```
+
+Nilai AIC 1350.77 dan parameter AR(1) signifikan.
+
+### **ARIMA (0,1,1)**
+
+```{r}
+model2=Arima(ts_diff1, order=c(0,1,1),method="ML") 
+summary(model2) 
+lmtest::coeftest(model2) 
+```
+
+Nilai AIC 1338.59 dan parameter MA(1) signifikan.
+
+### **ARIMA (1,1,1)**
+
+```{r}
+model3=Arima(ts_diff1, order=c(1,1,1),method="ML") 
+summary(model3)
+lmtest::coeftest(model3)
+```
+
+Nilai AIC 1337.76 dengan parameter AR(1) tidak signifikan dan MA(1) signifikan.
+
+### **ARIMA (2,1,0)**
+
+```{r}
+model4=Arima(ts_diff1, order=c(2,1,0),method="ML") 
+summary(model4) 
+lmtest::coeftest(model4) 
+```
+
+Nilai AIC 1346.8 dan seluruh parameter signifikan.
+
+### **ARIMA (0,1,3)**
+
+```{r}
+model5=Arima(ts_diff1, order = c(0,1,3), method = "ML")
+summary(model5)
+lmtest::coeftest(model5) 
+```
+
+Nilai AIC 1337.59 dan seluruh parameter signifikan.
+
+### **ARIMA (2,1,1)**
+
+```{r}
+model6=Arima(ts_diff1, order = c(2,1,1), method = "ML")
+summary(model6)
+lmtest::coeftest(model6)
+```
+
+Nilai AIC 1337.2 dengan parameter AR(1) tidak signifikan dan parameter lainnya signifikan.
+
+**Kesimpulan**
+Dengan membandingkan nilai AIC, BIC, serta signifikansi parameter berbagai model ARIMA, terpilih model **ARIMA(0,1,3)** yang menghasilkan nilai AIC terkecil dan seluruh parameter yang signifikan.
+
+# **Eksplorasi Sisaan**
+
+```{r}
+#Eksplorasi
+sisaan <- model5$residuals
+par(mfrow=c(2,3))
+qqnorm(sisaan)
+qqline(sisaan, col = "blue", lwd = 2)
+car::qqPlot(sisaan)
+plot(c(1:length(sisaan)),sisaan)
+acf(sisaan)
+pacf(sisaan)
+par(mfrow = c(1,1))
+```
+
+-   Grafik **"Plot Sisaan vs Waktu"** dengan sangat jelas menunjukkan adanya **autokorelasi positif**. Terlihat adanya pola di mana sisaan yang positif cenderung diikuti oleh sisaan positif lainnya (bergerombol di atas nol), dan sisaan negatif diikuti oleh sisaan negatif (bergerombol di bawah nol).
+-   Pada grafik **"Plot Sisaan vs Waktu"**, sebaran (lebar fluktuasi) dari sisaan terlihat relatif konstan dari waktu ke waktu. HAl ini menjadi indikasi bahwa **sisaan sudah homogen**.
+-   Pada grafik **"Plot Sisaan vs Waktu"**, sebaran (lebar fluktuasi) dari sisaan terlihat relatif konstan dari waktu ke waktu yang menjadi indikasi bahwa **nilai tengah sisaan = 0**.
+
+## **Uji Formal**
+
+### **Asumsi 1: Sisaan Menyebar Normal**
+
+```{r}
+ks.test(sisaan,"pnorm")
+```
+
+$H_0$ : Sisaan menyebar normal
+
+$H_1$ : Sisaan tidak menyebar normal
+
+Berdasarkan uji KS tersebut, didapat *p-value* < 0.05 yang lebih kecil dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa sisaan tidak menyebar normal. Hal ini sesuai dengan hasil eksplorasi menggunakan plot kuantil-kuantil normal.
+
+### **Asumsi 2: Tidak Ada Autokorelasi**
+
+```{r}
+Box.test(sisaan, type = "Ljung") 
+```
+
+$H_0$ : Sisaan saling bebas
+
+$H_1$ : Sisaan tidak tidak saling bebas
+
+Berdasarkan uji Ljung-Box tersebut, didapat *p-value* sebesar 0.6989 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa sisaan saling bebas. Hal ini berbeda dengan hasil eksplorasi.
+
+### **Asumsi 3: Sisaan Homogen**
+
+```{r}
+Box.test((sisaan)^2, type = "Ljung") 
+```
+
+$H_0$ : Ragam sisaan homogen
+
+$H_1$ : Ragam sisaan tidak homogen
+
+Berdasarkan uji Ljung-Box terhadap sisaan kuadrat tersebut, didapat *p-value* sebesar 0.7036 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa ragam sisaan homogen. Hal ini sejalan dengan hasil eksplorasi.
+
+### **Asumsi 4: Nilai Tengah Sisaan = 0**
+
+```{r}
+t.test(sisaan, mu = 0, conf.level = 0.95)
+```
+
+$H_0$ : nilai tengah sisaan sama dengan 0
+
+$H_1$ : nilai tengah sisaan tidak sama dengan 0
+
+Berdasarkan uji-ttersebut, didapat *p-value* sebesar 0.1097 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa nilai tengah sisaan sama dengan nol. Hal ini sesuai dengan hasil eksplorasi.
+
+Hasil uji formal menunujukkan bahwa data **sudah memenuhi seluruh asumsi kecuali 1**, dimana sisaan tidak menyebar normal.
+
+# **Overfitting**
+
+```{r}
+model1a=Arima(ts_diff1, order=c(1,1,3),method="ML")
+summary(model1a)
+lmtest::coeftest(model1a)
+
+model1b=Arima(ts_diff1, order=c(0,1,4),method="ML")
+summary(model1b) 
+lmtest::coeftest(model1b) 
+```
+
+Berdasarkan kedua model hasil *overfitting* di atas, model ARIMA(1,1,3) dan ARIMA(0,1,4) memiliki AIC yang lebih besar dibandingkan dengan model ARIMA(0,1,3) dan parameter kedua model ARIMA(1,0,2) dan ARIMA(0,0,3) tidak seluruhnya signifikan. Oleh karena itu, model **ARIMA(0,1,3) akan tetap digunakan** untuk melakukan peramalan.
+
+# **Peramalan**
+
+```{r}
+ramalan <- forecast::forecast(model5, h = 15) 
+ramalan
+data.ramalan <- ramalan$mean
+plot(ramalan)
+```
+
+```{r}
+perbandingan<-matrix(data=c(test_ts, data.ramalan),
+                     nrow = 15, ncol = 2)
+colnames(perbandingan)<-c("Aktual","Hasil Forecast")
+perbandingan
+accuracy(data.ramalan, test_ts)
+```
+
+# **Kesimpulan**
+
+Nilai **MAPE 100.31%** menunjukkan bahwa pola dalam **data sama sekali tidak bisa ditangkap oleh model regresi sederhana**. Hal ini dapat terjadi karena harga emas tidak bergerak dalam ruang hampa. Nilainya sangat dipengaruhi oleh berbagai faktor ekonomi dan geopolitik eksternal. Harga emas dapat dipengaruhi oleh banyak faktor eksternal seperti Kurs Dolar, Tingkat Inflasi, Suku Bunga Riil, dan masih banyak faktor lainnya.
+
+Oleh karena itu, **model ARIMAX atau SARIMAX menjadi opsi yang lebih tepat** untuk digunakan pada kasus ini. Dengan model ARIMAX/SARIMAX, model lebih robust dan memiliki nilai akurasi yang lebih tinggi. Dengan model ini pula tidak hanya memberi tahu "apa" prediksi harganya, tetapi juga memberi wawasan tentang "mengapa".
